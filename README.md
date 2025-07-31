@@ -1,158 +1,300 @@
-# 🏨 Hotel Management Database
+# 🏨 Hotel Management Database — Performance & Query Enhancements
 
-**HotelManagerDB** is a relational database system designed to manage hotel operations. It supports customer registrations, room bookings, service usage, staff management, payments, and auditing.
+## 🔧 What's New in This Commit
 
----
-
-## 📌 Purpose
-
-This database is intended for a multi-user hotel management application used by both hotel staff (administrators, managers, cleaners) and clients (to make online bookings).
+This update focuses on **database optimization** and the addition of **useful SQL queries and views** that reflect real-world hotel operations.
 
 ---
 
-## 🗃️ Database Structure
+## 🚀 Index Optimization
 
-The database includes the following tables:
+To speed up read operations and improve the overall performance of the database, several indexes were added:
 
-### 1. `Clients` — Guest Information
-| Field            | Data Type       | Description                |
-|------------------|------------------|----------------------------|
-| id_client        | INT (PK)         | Unique identifier          |
-| full_name        | VARCHAR(150)     | Full name of the guest     |
-| birth_date       | DATE             | Date of birth              |
-| citizenship      | VARCHAR(100)     | Country of citizenship     |
-| passport_number  | VARCHAR(50)      | Passport number            |
-| phone            | VARCHAR(20)      | Phone number               |
-| email            | VARCHAR(100)     | Email address              |
-| address          | TEXT             | Residential address        |
+
+### 👤 Clients Table
+- `document_number` — used for quick lookups by passport or ID.
+- `phone` — helps find clients by phone number efficiently  
+
+```sql
+CREATE INDEX idx_clients_document_number ON Clients(document_number);
+CREATE INDEX idx_clients_phone ON Clients(phone);
+```
 
 ---
 
-### 2. `Room` — Hotel Rooms
-| Field          | Data Type      | Description                         |
-|----------------|-----------------|-------------------------------------|
-| number_room    | VARCHAR(10) PK  | Room number                         |
-| type           | VARCHAR(50)     | Type (e.g., suite, standard)        |
-| capacity       | SMALLINT        | Maximum occupancy                   |
-| price_room     | DECIMAL(10,2)   | Price per night                     |
-| status_room    | VARCHAR(20)     | Status (available, occupied, etc.)  |
-| comfort_level  | VARCHAR(50)     | Comfort level (e.g., deluxe)        |
-| description    | TEXT            | Additional room description         |
+### 🛏️ Room Table
+
+- `status_room` — fast filtering for availability (free, reserved, maintenance).
+
+- `comfort_level` — helps search for room types (standard, deluxe, suite).
+
+- `Composite index: comfort_level + status_room` — improves queries filtering both.
+
+- `price_room` — useful for sorting and filtering by price.
+
+```sql
+CREATE INDEX idx_room_status ON Room(status_room);
+CREATE INDEX idx_room_comfort ON Room(comfort_level);
+CREATE INDEX idx_room_comfort_status ON Room(comfort_level, status_room);
+CREATE INDEX idx_room_price ON Room(price_room);
+```
 
 ---
 
-### 3. `Booking` — Room Bookings
-| Field             | Data Type      | Description                       |
-|-------------------|----------------|-----------------------------------|
-| id_booking        | VARCHAR(50) PK | Booking ID                        |
-| id_client         | INT FK         | Linked guest ID                   |
-| number_room       | VARCHAR(10) FK | Linked room number                |
-| date_reservation  | DATE           | Reservation date                  |
-| date_check_in     | DATE           | Check-in date                     |
-| date_check_out    | DATE           | Check-out date                    |
-| status_booking    | ENUM           | Status: reserved, canceled, completed |
-| total_price       | DECIMAL(10,2)  | Total cost of booking             |
+### 👨‍💼 Staff Table
+
+- `job_title` — improves queries by position (e.g. cleaners, receptionists).
+
+```sql
+CREATE INDEX idx_staff_job ON Staff(job_title);
+```
 
 ---
 
-### 4. `Service` — Available Services
-| Field       | Data Type       | Description              |
-|-------------|------------------|---------------------------|
-| id_service  | INT PK           | Service ID               |
-| name        | VARCHAR(100)     | Service name             |
-| description | TEXT             | Description              |
-| price       | DECIMAL(10,2)    | Price                    |
+### 📅 Booking Table
+
+- `id_client` — boosts join performance and filtering by client.
+
+```sql
+CREATE INDEX idx_boking_id_client ON Booking(id_client);
+```
 
 ---
 
-### 5. `Booking_Services` — Services Used per Booking
-| Field       | Data Type      | Description                     |
-|-------------|----------------|----------------------------------|
-| booking_id  | VARCHAR(50) FK | Linked booking ID               |
-| service_id  | INT FK         | Linked service ID               |
-| quantity    | SMALLINT       | Quantity used                   |
+### 📊 SQL Queries
+Below are practical and efficient queries reflecting hotel operations.
+
+### 🟩 Room Availability
+
+```sql
+SELECT r.number_room  
+FROM Room r
+WHERE r.status_room = 'free';
+```
+
+➡️ Find all currently available rooms.
 
 ---
 
-### 6. `Staff` — Hotel Employees
-| Field         | Data Type      | Description                    |
-|---------------|----------------|--------------------------------|
-| id_staff      | INT PK         | Staff ID                       |
-| full_name     | VARCHAR(150)   | Full name                      |
-| job_title     | VARCHAR(100)   | Job title                      |
-| phone         | VARCHAR(20)    | Contact number                 |
-| home_address  | TEXT           | Home address                   |
-| login         | VARCHAR(100)   | Login name                     |
-| password      | VARCHAR(100)   | Password hash                  |
-| role          | VARCHAR(50)    | Role (admin, staff, etc.)      |
+### 🧾 Active Reservations with Client Info
+
+```sql
+SELECT c.last_name, c.first_name, c.middle_name, r.number_room, b.date_check_in, b.date_check_out
+FROM booking b
+JOIN room r ON b.number_room = r.number_room
+JOIN clients c ON b.id_client = c.id_client
+WHERE b.status_booking = 'reservat';
+``` 
+➡️ Useful at reception to view all reserved rooms with check-in/out dates.
 
 ---
 
-### 7. `Payments` — Payment Records
-| Field         | Data Type      | Description                    |
-|---------------|----------------|--------------------------------|
-| id_payment    | INT PK         | Payment ID                     |
-| booking_id    | VARCHAR(50) FK | Related booking ID             |
-| amount        | DECIMAL(10,2)  | Paid amount                    |
-| payment_date  | DATE           | Payment date                   |
-| method        | VARCHAR(50)    | Payment method (cash, card)    |
-| status        | VARCHAR(50)    | Payment status                 |
+### 🧑‍🤝‍🧑 Client Activity & Booking Stats
+#### Last Booking Per Client
+```sql
+SELECT c.last_name, c.first_name, c.middle_name, MAX(b.date_reservation) AS last_booking_date
+FROM clients c
+LEFT JOIN booking b ON c.id_client = b.id_client
+GROUP BY c.id_client;
+``` 
+--- 
+
+#### Total Number of Bookings per Client
+
+```sql
+SELECT c.last_name, c.first_name, c.middle_name, COUNT(*) AS count_booking
+FROM booking b
+JOIN clients c ON c.id_client = b.id_client
+GROUP BY c.id_client;
+```
+---
+
+
+### 💰 Services and Charges Breakdown
+#### Services Used in Specific Booking
+```sql
+SELECT 
+c.last_name,
+ c.first_name, 
+ c.middle_name,
+r.number_room, 
+s.name_services,
+bs.quantity,
+s.price_services, (s.price_services * bs.quantity) AS total_summ
+FROM booking b
+JOIN clients c ON b.id_client = c.id_client
+JOIN room r ON b.number_room = r.number_room
+JOIN booking_services bs ON b.id_booking = bs.id_booking
+JOIN servicess s ON bs.id_services = s.id_services
+WHERE b.id_booking = 1;
+```
 
 ---
 
-### 8. `Maintenance` — Room Maintenance Log
-| Field           | Data Type      | Description                     |
-|------------------|----------------|----------------------------------|
-| id_maintenance   | INT PK         | Maintenance record ID           |
-| room_number      | VARCHAR(10) FK | Affected room number            |
-| start_date       | DATE           | Maintenance start date          |
-| end_date         | DATE           | Maintenance end date            |
-| reason           | TEXT           | Reason (cleaning, repairs, etc.)|
+#### Most Popular Services
+```sql
+SELECT s.name_services, SUM(bs.quantity) AS total_quantity
+FROM servicess s
+JOIN booking_services bs ON s.id_services = bs.id_services
+GROUP BY s.id_services
+ORDER BY total_quantity DESC
+LIMIT 5;
+```
 
 ---
 
-### 9. `Users` — System Users (Login)
-| Field         | Data Type      | Description                  |
-|---------------|----------------|------------------------------|
-| id_user       | INT PK         | User ID                      |
-| username      | VARCHAR(100)   | Username                     |
-| password_hash | VARCHAR(100)   | Password hash                |
-| role          | VARCHAR(50)    | User role (admin, employee)  |
-| last_login    | DATETIME       | Last login timestamp         |
+### 🏨 Room Usage and Maintenance
+#### Booked Suites
+```sql
+SELECT c.last_name, c.first_name, c.middle_name, r.number_room, b.date_check_in, r.comfort_level
+FROM booking b
+JOIN clients c ON b.id_client = c.id_client
+JOIN room r ON b.number_room = r.number_room
+WHERE r.comfort_level = 'suite';
+```
 
 ---
 
-### 10. `Logs` — Action Audit Log
-| Field       | Data Type      | Description                       |
-|-------------|----------------|------------------------------------|
-| id_log      | INT PK         | Log record ID                     |
-| user_id     | INT FK         | ID of user who performed action   |
-| action      | TEXT           | Action type (INSERT, UPDATE, DELETE) |
-| log_time    | DATETIME       | Timestamp                         |
-| description | TEXT           | Action details                    |
+#### Maintenance + Free Room Insights (with last bookings)
+```sql
+SELECT r.number_room, r.status_room, MAX(b.date_reservation) AS date_last_booking, MAX(m.end_date) AS date_last_maintenance
+FROM room r
+LEFT JOIN booking b ON r.number_room = b.number_room
+LEFT JOIN maintenance m ON r.number_room = m.number_room
+WHERE r.status_room = 'maintenance'
+GROUP BY r.number_room
+
+UNION
+
+SELECT r.number_room, r.status_room, MAX(b.date_reservation), NULL
+FROM room r
+JOIN booking b ON r.number_room = b.number_room
+WHERE r.status_room = 'free'
+GROUP BY r.number_room;
+```
+---
+
+### 🥇 VIP Clients and Room Stats
+#### Client with Highest Booking Price
+```sql
+SELECT c.last_name, c.first_name, c.middle_name, b.total_price
+FROM clients c
+JOIN booking b ON c.id_client = b.id_client
+WHERE b.total_price = (
+    SELECT MAX(b.total_price) FROM booking b
+);
+```
 
 ---
 
-## ⚙️ Requirements
+#### Rooms Without Bookings in Last 30 Days
+```sql
+SELECT r.number_room, r.status_room
+FROM room r
+LEFT JOIN booking b ON r.number_room = b.number_room
+  AND b.date_reservation >= DATE_SUB(CURRENT_DATE, INTERVAL 30 DAY)
+WHERE b.id_booking IS NULL;
+```
+---
 
-- **MySQL 5.7+** (or MariaDB)
-- InnoDB storage engine (for foreign keys)
+#### Most Expensive Service Per Category
+```sql
+SELECT s1.name_services, s1.price_services, s1.description_services
+FROM servicess s1
+WHERE s1.price_services = (
+    SELECT MAX(s2.price_services)
+    FROM servicess s2
+    WHERE s2.description_services = s1.description_services
+)
+ORDER BY s1.description_services;
+```
 
 ---
 
-## 📥 Setup Instructions
-
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/PAG-0418/Hotel_Managment_BD.git
-2. Import the database schema:
-   ```bash
-   mysql -u your_user -p your_database < schema.sql
-3. Connect the database to your backend application.
+#### Clients with More Than 3 Bookings
+```sql
+SELECT c.last_name, c.first_name, c.middle_name
+FROM clients c 
+JOIN booking b ON c.id_client = b.id_client
+GROUP BY c.id_client
+HAVING COUNT(b.id_booking) > 3;
+```
 
 ---
 
-## 🙋‍♂️ Author
-Pascalov Alexandr  
-📧 s.paskalovalex18@gmail.com  
-📅 2025
+### 💳 Payments & Room Popularity
+
+#### Total Revenue by Payment Type
+```sql
+SELECT p.payment_type, SUM(p.amount) AS total_for_group
+FROM Payments p
+GROUP BY p.payment_type;
+```
+--- 
+
+#### Most Frequently Booked Rooms
+```sql
+SELECT r.number_room, COUNT(b.id_booking) AS total_booking
+FROM room r
+JOIN booking b ON r.number_room = b.number_room
+GROUP BY r.number_room
+ORDER BY total_booking DESC;
+```
+---
+### 👁️ Views for Reuse and Simplification
+--- 
+
+### 🔍 view_active_bookings
+
+#### Shows all currently active bookings.
+
+```sql
+CREATE VIEW view_active_bookings AS
+SELECT 
+    b.id_booking,
+    c.last_name,
+    c.first_name,
+    c.middle_name,
+    r.number_room,
+    b.date_check_in,
+    b.date_check_out,
+    b.status_booking,
+    b.total_price
+FROM booking b
+JOIN clients c ON b.id_client = c.id_client
+JOIN room r ON b.number_room = r.number_room
+WHERE b.status_booking = 'checked-in' OR b.status_booking = 'reservat';
+```
+---
+
+### 📖 view_client_history
+--- 
+#### Displays each client’s full history of room bookings and services used.
+
+```sql
+CREATE VIEW view_client_history AS
+SELECT 
+    b.id_booking,
+    b.id_client,
+    r.number_room,
+    r.comfort_level,
+    b.date_reservation,
+    b.total_price,
+    GROUP_CONCAT(s.name_services SEPARATOR ', ') AS services_used
+FROM booking b
+JOIN room r ON b.number_room = r.number_room
+LEFT JOIN booking_services bs ON b.id_booking = bs.id_booking
+LEFT JOIN servicess s ON bs.id_services = s.id_services
+GROUP BY b.id_booking, b.id_client, r.number_room, r.comfort_level, b.date_reservation, b.total_price;
+```
+
+### 📌 Summary
+This commit introduces:
+
+- `Indexes for better performance`
+
+- `Advanced SQL queries to extract insights and operate the hotel effectively`
+
+- `Views to simplify frequent reporting and improve maintainability`
+
+All enhancements were made with performance, clarity, and real-life hotel management needs in mind.
